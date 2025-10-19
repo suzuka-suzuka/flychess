@@ -1,0 +1,19 @@
+{
+  "name": "flychess-game",
+  "version": "1.0.0",
+  "description": "飞行棋游戏 - Node.js后端 + 网页前端",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  },
+  "keywords": [
+    "flychess",
+    "game"
+  ],
+  "author": "",
+  "license": "MIT"
+}
