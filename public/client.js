@@ -1,3 +1,9 @@
+// ============ Socket.IO 连接 ============
+const socket = io();
+let myPlayerColor = null;
+let myPlayerName = null;
+let currentRoomId = null;
+
 let gameState = null;
 let players = [];
 let positions = [];
@@ -21,10 +27,14 @@ const pieceNumberColorMap = {
 
 const setupPanel = document.getElementById("setup-panel");
 const gamePanel = document.getElementById("game-panel");
+const joinRoomBtn = document.getElementById("join-room-btn");
 const startGameBtn = document.getElementById("start-game-btn");
 const rollDiceBtn = document.getElementById("roll-dice-btn");
 const resetGameBtn = document.getElementById("reset-game-btn");
-const playerCountSelect = document.getElementById("player-count");
+const roomIdInput = document.getElementById("room-id");
+const playerNameInput = document.getElementById("player-name");
+const waitingRoom = document.getElementById("waiting-room");
+const roomPlayersList = document.getElementById("room-players-list");
 const gameMessage = document.getElementById("game-message");
 const lastTurnEvents = document.getElementById("last-turn-events");
 const currentPlayerName = document.getElementById("current-player-name");
@@ -480,6 +490,10 @@ function drawPieceNumbers(piecesOnSpot, x, y) {
   }
 }
 
+function getColorHex(color) {
+  return colorMap[color] || "#000000";
+}
+
 function drawDice(number) {
   if (!diceCanvas || !diceCtx) {
     console.error("骰子Canvas未初始化");
@@ -677,18 +691,20 @@ function drawBoard(state, diceRoll = 0, highlightPieces = []) {
   ctx.restore();
 }
 
-function updateCurrentPlayer() {
-  if (gameState) {
+function updateCurrentPlayer(gs) {
+  const currentGameState = gs || gameState;
+  if (currentGameState) {
     const currentPlayer = players.find(
-      (p) => p.id === gameState.currentPlayerId
+      (p) => p.color === currentGameState.currentPlayerColor
     );
     if (currentPlayer) {
       currentPlayerName.textContent = currentPlayer.name;
-      currentPlayerColor.style.backgroundColor =
-        colorMap[gameState.currentPlayerColor];
+      if (currentPlayerColor) {
+        currentPlayerColor.className = "player-color";
+        currentPlayerColor.classList.add(currentPlayer.color);
+      }
     }
   }
-  updatePlayersList();
 }
 
 function updateLastTurnDisplay() {
@@ -726,7 +742,9 @@ function updateUI(data, skipPlayerUpdate = false) {
     rollDiceBtn.disabled = true;
   } else {
     selectedPiecesForMove = [];
-    rollDiceBtn.disabled = data.state !== "rolling";
+    // 只有当状态是rolling且是自己的回合时才启用按钮
+    const isMyTurn = gameState && gameState.currentPlayerColor === myPlayerColor;
+    rollDiceBtn.disabled = !(data.state === "rolling" && isMyTurn);
   }
 
   drawBoard(gameState, diceNumber, selectedPiecesForMove);
@@ -737,323 +755,52 @@ function showPieceSelection(movablePieces) {
   gameMessage.textContent = "请点击棋盘上高亮的棋子来移动";
 }
 
-function updatePlayersList() {
-  const playersList = document.getElementById("players-list");
-  playersList.innerHTML = "";
+function updatePlayersList(playersList, gs) {
+  const currentGameState = gs || gameState;
+  const playersListDiv = document.getElementById("players-list");
+  if (!playersListDiv) return;
+  
+  playersListDiv.innerHTML = "";
 
-  players.forEach((player) => {
+  const playersToShow = playersList || players;
+  playersToShow.forEach((player) => {
     const playerItem = document.createElement("div");
     playerItem.className = "player-item";
 
-    if (gameState && gameState.currentPlayerId === player.id) {
+    // ✅ 高亮当前回合的玩家
+    if (currentGameState && currentGameState.currentPlayerColor === player.color) {
       playerItem.classList.add("active");
     }
 
     const colorDiv = document.createElement("div");
-    colorDiv.className = "player-item-color";
-    colorDiv.style.backgroundColor = colorMap[player.color];
+    colorDiv.className = "player-color";
+    colorDiv.classList.add(player.color);
 
     const nameDiv = document.createElement("div");
-    nameDiv.className = "player-item-name";
+    nameDiv.className = "player-name";
     nameDiv.textContent = player.name;
 
     const statusDiv = document.createElement("div");
-    statusDiv.className = "player-item-status";
+    statusDiv.className = "player-status";
 
-    if (gameState && gameState.currentPlayerId === player.id) {
+    // ✅ 显示回合标记
+    if (currentGameState && currentGameState.currentPlayerColor === player.color) {
       statusDiv.textContent = "🎯";
+    }
+    
+    // 标记自己
+    if (player.color === myPlayerColor) {
+      const youBadge = document.createElement("span");
+      youBadge.className = "you-badge";
+      youBadge.textContent = " (你)";
+      nameDiv.appendChild(youBadge);
     }
 
     playerItem.appendChild(colorDiv);
     playerItem.appendChild(nameDiv);
     playerItem.appendChild(statusDiv);
-    playersList.appendChild(playerItem);
+    playersListDiv.appendChild(playerItem);
   });
-}
-
-async function startGame() {
-  const playerCount = parseInt(playerCountSelect.value);
-  players = [];
-
-  for (let i = 1; i <= playerCount; i++) {
-    const input = document.getElementById(`player${i}`);
-    const name = input.value.trim() || `玩家${i}`;
-    players.push({ id: name, name: name });
-  }
-
-  try {
-    const response = await fetch("/api/game/create", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ players: players.map((p) => p.id) }),
-    });
-
-    const data = await response.json();
-
-    if (data.success) {
-      data.gameState.pieces.forEach((piece) => {
-        const playerId = piece.id.split("-")[0];
-        const player = players.find((p) => p.name === playerId);
-        if (player && !player.color) {
-          player.color = piece.color;
-        }
-      });
-
-      const colors = ["blue", "yellow", "green", "red"];
-      players.forEach((player, index) => {
-        player.color = colors[index];
-      });
-
-      setupPanel.style.display = "none";
-      gamePanel.style.display = "block";
-
-      initDiceCanvas();
-
-      updateUI(data);
-      drawDice(0);
-      gameMessage.textContent = "游戏开始！请掷骰子";
-    } else {
-      alert(data.error || "创建游戏失败");
-    }
-  } catch (error) {
-    console.error("开始游戏失败:", error);
-    alert("开始游戏失败");
-  }
-}
-
-async function rollDice() {
-  rollDiceBtn.disabled = true;
-
-  try {
-    const response = await fetch("/api/game/roll", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-    });
-
-    const data = await response.json();
-
-    console.log("掷骰子返回数据:", JSON.stringify(data, null, 2));
-
-    if (data.success) {
-      const currentPlayer = players.find(
-        (p) => p.id === gameState.currentPlayerId
-      );
-
-      updateUI(data);
-
-      let message = "";
-      let lastTurnMessage = `掷出 ${data.diceRoll}`;
-
-      if (data.rollback) {
-        message = "三个6！所有棋子退回基地！";
-        lastTurnMessage += "，三个6！所有棋子退回基地";
-      } else if (data.movablePieces) {
-        message = `掷出 ${data.diceRoll}，请点击棋子移动`;
-      } else {
-        message = `掷出 ${data.diceRoll}，${data.message}`;
-        lastTurnMessage += `，${data.message}`;
-      }
-
-      if (data.canRollAgain) {
-        message += " - 掷到6，可以再掷一次！";
-      }
-
-      gameMessage.textContent = message;
-
-      console.log("检查是否需要切换玩家:");
-      console.log("  data.switchPlayer =", data.switchPlayer);
-      console.log("  data.nextPlayer =", data.nextPlayer);
-
-      if (data.switchPlayer && currentPlayer) {
-        console.log("✓ 需要切换玩家，记录上一轮信息");
-        recordLastTurn(
-          currentPlayer.name,
-          currentPlayer.color,
-          data.diceRoll,
-          lastTurnMessage
-        );
-
-        if (data.nextPlayer) {
-          gameState = data.nextPlayer;
-        } else {
-          fetch("/api/game/state")
-            .then((res) => res.json())
-            .then((stateData) => {
-              gameState = stateData.gameState;
-              updateCurrentPlayer();
-              drawBoard(gameState, 0, []);
-            });
-        }
-        updateCurrentPlayer();
-        drawDice(0);
-        drawBoard(gameState, 0, []);
-        gameMessage.textContent = "请掷骰子";
-      } else if (!data.switchPlayer && !data.movablePieces) {
-        console.log("✓ 可以再掷一次骰子");
-        rollDiceBtn.disabled = false;
-      }
-    } else {
-      alert(data.error || "掷骰子失败");
-      rollDiceBtn.disabled = false;
-    }
-  } catch (error) {
-    console.error("掷骰子失败:", error);
-    alert("掷骰子失败");
-    rollDiceBtn.disabled = false;
-  }
-}
-
-async function selectPiece(pieceIndex) {
-  const playerBeforeMove = players.find(
-    (p) => p.id === gameState.currentPlayerId
-  );
-
-  try {
-    const response = await fetch("/api/game/move", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pieceIndex }),
-    });
-
-    const data = await response.json();
-
-    console.log("=== selectPiece 收到的数据 ===");
-    console.log("完整数据:", JSON.stringify(data, null, 2));
-
-    if (data.success) {
-      data.playerBeforeMove = playerBeforeMove;
-
-      console.log("移动前的玩家:", playerBeforeMove);
-
-      updateUI(data, true);
-
-      if (data.animationData && data.animationData.length > 0) {
-        const allAnims = data.animationData.map((anim) => {
-          const baseTimePerStep =
-            anim.type === "FLY"
-              ? 150
-              : anim.type === "JUMP"
-              ? 180
-              : anim.type === "KICKBACK"
-              ? 400
-              : 200;
-
-          const pathLength = anim.path ? anim.path.length : 2;
-          const totalDuration = baseTimePerStep * Math.max(pathLength - 1, 1);
-
-          return new Animation(
-            AnimationType[anim.type],
-            anim.pieceId,
-            anim.path || [anim.from, anim.to],
-            totalDuration
-          );
-        });
-
-        const moveAnims = allAnims.filter(anim => anim.type !== AnimationType.KICKBACK);
-        const kickbackAnims = allAnims.filter(anim => anim.type === AnimationType.KICKBACK);
-
-        const runKickback = () => {
-          if (kickbackAnims.length > 0) {
-            startAnimation(kickbackAnims, () => {
-              drawBoard(gameState, 0, selectedPiecesForMove);
-              handleAfterMove(data);
-            });
-          } else {
-            drawBoard(gameState, 0, selectedPiecesForMove);
-            handleAfterMove(data);
-          }
-        };
-
-        if (moveAnims.length > 0) {
-          startAnimation(moveAnims, runKickback);
-        } else {
-          runKickback();
-        }
-      } else {
-        drawBoard(gameState, 0, selectedPiecesForMove);
-        handleAfterMove(data);
-      }
-    } else {
-      alert(data.error || "移动棋子失败");
-    }
-  } catch (error) {
-    console.error("选择棋子失败:", error);
-    alert("选择棋子失败");
-  }
-}
-
-function handleAfterMove(data) {
-  const currentPlayer = data.playerBeforeMove;
-
-  console.log("=== handleAfterMove 调试信息 ===");
-  console.log("移动前的玩家:", currentPlayer);
-  console.log("骰子点数:", data.diceRoll);
-  console.log("移动事件:", data.moveEvents);
-  console.log("是否切换玩家:", data.switchPlayer);
-  console.log("是否可以再掷:", data.canRollAgain);
-
-  let moveMessage = `掷出 ${data.diceRoll}，${data.moveEvents.join(" → ")}`;
-
-  let message = "棋子移动成功";
-  if (data.canRollAgain) {
-    message += " - 掷到6，可以再掷一次！";
-  }
-  gameMessage.textContent = message;
-
-  selectedPiecesForMove = [];
-
-  if (currentPlayer && data.moveEvents && data.moveEvents.length > 0) {
-    recordLastTurn(
-      currentPlayer.name,
-      currentPlayer.color,
-      data.diceRoll,
-      moveMessage
-    );
-  }
-
-  if (data.switchPlayer) {
-    if (data.nextPlayer) {
-      gameState = data.nextPlayer;
-    } else {
-      fetch("/api/game/state")
-        .then((res) => res.json())
-        .then((stateData) => {
-          gameState = stateData.gameState;
-          updateCurrentPlayer();
-          drawBoard(gameState, 0, []);
-        });
-    }
-    updateCurrentPlayer();
-    drawDice(0);
-    drawBoard(gameState, 0, []);
-    gameMessage.textContent = "请掷骰子";
-    rollDiceBtn.disabled = false;
-  } else if (data.canRollAgain) {
-    console.log("✓ 掷到6，可以再掷一次");
-    drawDice(0);
-    drawBoard(gameState, 0, []);
-    gameMessage.textContent = "掷到6！可以再掷一次骰子";
-    rollDiceBtn.disabled = false;
-  } else {
-    console.log("⚠ 未知状态");
-    rollDiceBtn.disabled = false;
-  }
-}
-
-async function resetGame() {
-  if (!confirm("确定要重新开始吗？")) return;
-
-  try {
-    await fetch("/api/game/reset", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-    });
-
-    location.reload();
-  } catch (error) {
-    console.error("重置游戏失败:", error);
-    alert("重置游戏失败");
-  }
 }
 
 canvas.addEventListener("click", (e) => {
@@ -1100,18 +847,6 @@ canvas.addEventListener("click", (e) => {
   }
 });
 
-startGameBtn.addEventListener("click", startGame);
-rollDiceBtn.addEventListener("click", rollDice);
-resetGameBtn.addEventListener("click", resetGame);
-
-playerCountSelect.addEventListener("change", (e) => {
-  const count = parseInt(e.target.value);
-  for (let i = 1; i <= 4; i++) {
-    const input = document.getElementById(`player${i}`);
-    input.parentElement.style.display = i <= count ? "flex" : "none";
-  }
-});
-
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
     console.log("页面隐藏，暂停动画");
@@ -1143,11 +878,421 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 
+// ============ Socket.IO 事件监听器 ============
+
+const readyBtn = document.getElementById("ready-btn");
+const generateRoomBtn = document.getElementById("generate-room-btn");
+
+// 生成4位数房间号
+function generateRoomId() {
+  return Math.floor(1000 + Math.random() * 9000).toString();
+}
+
+// 生成房间按钮
+generateRoomBtn.addEventListener("click", () => {
+  const roomId = generateRoomId();
+  roomIdInput.value = roomId;
+  joinRoomBtn.disabled = false;
+  joinRoomBtn.textContent = "创建房间（房主）";
+});
+
+// 允许手动输入房间号
+roomIdInput.addEventListener("input", () => {
+  if (roomIdInput.value.trim()) {
+    joinRoomBtn.disabled = false;
+    joinRoomBtn.textContent = "加入房间";
+  } else {
+    joinRoomBtn.disabled = true;
+  }
+});
+
+// 加入房间
+joinRoomBtn.addEventListener("click", () => {
+  const roomId = roomIdInput.value.trim();
+  const playerName = playerNameInput.value.trim() || "玩家";
+  
+  if (!roomId) {
+    alert("请先生成或输入房间号");
+    return;
+  }
+  
+  currentRoomId = roomId;
+  myPlayerName = playerName;
+  
+  socket.emit("joinRoom", { roomId, playerName });
+  
+  joinRoomBtn.disabled = true;
+  roomIdInput.disabled = true;
+  playerNameInput.disabled = true;
+  generateRoomBtn.disabled = true;
+});
+
+// 准备按钮
+readyBtn.addEventListener("click", () => {
+  socket.emit("playerReady");
+});
+
+// 开始游戏按钮
+startGameBtn.addEventListener("click", () => {
+  socket.emit("startGame");
+});
+
+// 掷骰子按钮
+rollDiceBtn.addEventListener("click", () => {
+  console.log("点击掷骰子按钮");
+  socket.emit("rollDice");
+});
+
+// 重置游戏按钮
+resetGameBtn.addEventListener("click", () => {
+  if (confirm("确定要重新开始游戏吗？")) {
+    socket.emit("resetGame");
+  }
+});
+
+// 房间更新
+socket.on("roomUpdate", (data) => {
+  console.log("房间更新:", data);
+  
+  waitingRoom.style.display = "block";
+  
+  // 更新房间玩家列表
+  roomPlayersList.innerHTML = "";
+  data.players.forEach((player) => {
+    const playerDiv = document.createElement("div");
+    playerDiv.className = "room-player";
+    const colorName = player.color === "blue" ? "蓝" : player.color === "yellow" ? "黄" : player.color === "green" ? "绿" : "红";
+    const hostTag = player.isHost ? '<span class="host-tag">房主</span>' : '';
+    const youTag = player.id === socket.id ? '<span class="you-tag">(你)</span>' : '';
+    const readyTag = player.ready ? '<span class="ready-tag">✓已准备</span>' : '<span class="not-ready-tag">未准备</span>';
+    
+    playerDiv.innerHTML = `
+      <span class="player-color-dot" style="background: ${colorMap[player.color]}"></span>
+      <span>${player.name} (${colorName}色) ${hostTag}${youTag}</span>
+      ${readyTag}
+    `;
+    roomPlayersList.appendChild(playerDiv);
+    
+    if (player.id === socket.id) {
+      myPlayerColor = player.color;
+      
+      // 更新准备按钮文字
+      readyBtn.textContent = player.ready ? "取消准备" : "准备";
+      readyBtn.className = player.ready ? "btn btn-warning" : "btn btn-secondary";
+      
+      // 如果是房主，显示开始游戏按钮
+      if (player.isHost) {
+        startGameBtn.style.display = "inline-block";
+        readyBtn.style.display = "none"; // 房主不需要准备按钮（自动准备）
+      } else {
+        startGameBtn.style.display = "none";
+        readyBtn.style.display = "inline-block";
+      }
+    }
+  });
+  
+  // 更新开始按钮状态（仅房主可见）
+  startGameBtn.disabled = !data.canStart;
+  
+  // 更新玩家列表
+  players = data.players.map(p => ({
+    id: p.name,
+    name: p.name,
+    color: p.color
+  }));
+});
+
+// 游戏开始
+socket.on("gameStart", (data) => {
+  console.log("游戏开始:", data);
+  
+  setupPanel.style.display = "none";
+  gamePanel.style.display = "block";
+  
+  initDiceCanvas();
+  updateUI(data);
+  drawDice(0);
+  
+  const isMyTurn = data.gameState.currentPlayerColor === myPlayerColor;
+  gameMessage.textContent = isMyTurn ? "你的回合！请掷骰子" : "等待其他玩家...";
+  rollDiceBtn.disabled = !isMyTurn;
+});
+
+// 掷骰子结果
+socket.on("rollResult", (data) => {
+  console.log("掷骰子结果:", data);
+  
+  // ✅ 更新游戏状态：如果切换玩家则使用 nextPlayer，否则使用 gameState
+  if (data.switchPlayer && data.nextPlayer) {
+    gameState = data.nextPlayer;
+  } else {
+    gameState = data.gameState;
+  }
+  
+  // ✅ 更新上一轮信息（当前掷骰子的玩家）
+  const lastPlayer = players.find(
+    (p) => p.color === data.gameState.currentPlayerColor
+  );
+  if (lastPlayer) {
+    lastTurnInfo.playerName = lastPlayer.name;
+    lastTurnInfo.playerColor = lastPlayer.color;
+    lastTurnInfo.diceRoll = data.diceRoll;
+    lastTurnInfo.message = data.message;
+    
+    // 更新上一轮玩家显示
+    if (lastPlayerColor && lastPlayerName) {
+      lastPlayerColor.className = "player-color";
+      lastPlayerColor.classList.add(lastPlayer.color);
+      lastPlayerName.textContent = lastPlayer.name;
+    }
+    
+    // 更新上一轮骰子
+    drawLastDice(data.diceRoll);
+    
+    // 更新上一轮消息
+    if (lastTurnEvents) {
+      lastTurnEvents.textContent = data.message || '-';
+    }
+  }
+  
+  // ✅ 更新当前玩家信息
+  const currentPlayer = players.find(
+    (p) => p.color === gameState.currentPlayerColor
+  );
+  if (currentPlayer) {
+    currentTurnInfo.playerName = currentPlayer.name;
+    currentTurnInfo.playerColor = currentPlayer.color;
+    currentTurnInfo.diceRoll = data.diceRoll;
+    
+    // 更新当前玩家显示
+    updateCurrentPlayer(gameState);
+  }
+
+  // 更新当前骰子显示
+  drawDice(data.diceRoll);
+  
+  // ✅ 更新玩家列表（高亮当前回合玩家）
+  updatePlayersList(players, gameState);
+
+  if (data.movablePieces && data.movablePieces.length > 0) {
+    // 有可移动棋子
+    selectedPiecesForMove = data.movablePieces;
+    drawBoard(gameState, data.diceRoll, selectedPiecesForMove);
+    gameMessage.textContent = `骰子点数: ${data.diceRoll} - ${data.message}`;
+    
+    const isMyTurn = gameState.currentPlayerColor === myPlayerColor;
+    if (!isMyTurn) {
+      selectedPiecesForMove = [];
+    }
+    rollDiceBtn.disabled = true;
+  } else {
+    // 没有可移动棋子，已经切换回合
+    gameMessage.textContent = data.message;
+    selectedPiecesForMove = [];
+    drawBoard(gameState, data.diceRoll, selectedPiecesForMove);
+    
+    // ✅ 更新按钮状态
+    const isMyTurn = gameState.currentPlayerColor === myPlayerColor;
+    rollDiceBtn.disabled = !isMyTurn;
+  }
+});
+
+// 移动结果
+socket.on("moveResult", (data) => {
+  console.log("移动结果:", data);
+  
+  // ✅ 更新游戏状态：如果切换玩家则使用 nextPlayer，否则使用 gameState
+  if (data.switchPlayer && data.nextPlayer) {
+    gameState = data.nextPlayer;
+  } else {
+    gameState = data.gameState;
+  }
+  
+  // ✅ 更新上一轮信息（刚才移动棋子的玩家）
+  const lastPlayer = players.find(
+    (p) => p.color === data.gameState.currentPlayerColor
+  );
+  if (lastPlayer) {
+    lastTurnInfo.playerName = lastPlayer.name;
+    lastTurnInfo.playerColor = lastPlayer.color;
+    lastTurnInfo.diceRoll = data.diceRoll;
+    lastTurnInfo.message = data.moveEvents ? data.moveEvents.join(', ') : data.message;
+    
+    // 更新上一轮玩家显示
+    if (lastPlayerColor && lastPlayerName) {
+      lastPlayerColor.className = "player-color";
+      lastPlayerColor.classList.add(lastPlayer.color);
+      lastPlayerName.textContent = lastPlayer.name;
+    }
+    
+    // 更新上一轮骰子
+    drawLastDice(data.diceRoll);
+    
+    // 更新上一轮事件
+    if (lastTurnEvents && data.moveEvents) {
+      lastTurnEvents.innerHTML = data.moveEvents
+        .map((event) => `<div class="event-item">${event}</div>`)
+        .join("");
+    }
+  }
+  
+  selectedPiecesForMove = [];
+  gameMessage.textContent = data.message;
+
+  if (data.animationData && data.animationData.length > 0) {
+    playAnimations(data.animationData, () => {
+      updateUIAfterMove(data);
+    });
+  } else {
+    updateUIAfterMove(data);
+  }
+});
+
+// 游戏重置
+socket.on("gameReset", (data) => {
+  console.log("游戏重置:", data);
+  
+  gameState = null;
+  selectedPiecesForMove = [];
+  
+  gamePanel.style.display = "none";
+  setupPanel.style.display = "block";
+  waitingRoom.style.display = "none";
+  
+  joinRoomBtn.disabled = false;
+  roomIdInput.disabled = false;
+  playerNameInput.disabled = false;
+  
+  gameMessage.textContent = "";
+});
+
+// 玩家离开
+socket.on("playerLeft", (data) => {
+  console.log("玩家离开:", data);
+  alert(data.message);
+  
+  players = data.players.map(p => ({
+    id: p.name,
+    name: p.name,
+    color: p.color
+  }));
+  
+  // 如果游戏中有玩家离开，可能需要重置游戏
+  if (gameState) {
+    alert("有玩家离开，游戏将重置");
+    socket.emit("resetGame");
+  }
+});
+
+// 错误处理
+socket.on("error", (data) => {
+  console.error("Socket错误:", data);
+  alert(data.message);
+  
+  if (data.message === "不是你的回合") {
+    rollDiceBtn.disabled = true;
+  }
+});
+
+// ============ 辅助函数 ============
+
+// 选择棋子函数（供 canvas 点击事件调用）
+function selectPiece(pieceIndex) {
+  if (!selectedPiecesForMove.includes(pieceIndex)) {
+    return;
+  }
+  console.log("选择棋子:", pieceIndex);
+  socket.emit("movePiece", { pieceIndex });
+}
+
+function updateUIAfterMove(data) {
+  // ✅ 游戏状态已在 moveResult 中更新，这里直接使用全局的 gameState
+  
+  // ✅ 更新当前玩家显示
+  updateCurrentPlayer(gameState);
+  
+  // ✅ 更新玩家列表（高亮当前回合玩家）
+  updatePlayersList(players, gameState);
+  
+  const isMyTurn = gameState.currentPlayerColor === myPlayerColor;
+  
+  if (data.canRollAgain && isMyTurn) {
+    gameMessage.textContent = "掷到6！可以再掷一次骰子";
+    rollDiceBtn.disabled = false;
+  } else {
+    if (isMyTurn) {
+      gameMessage.textContent = "你的回合！请掷骰子";
+    } else {
+      const currentPlayer = players.find(
+        (p) => p.color === gameState.currentPlayerColor
+      );
+      gameMessage.textContent = currentPlayer 
+        ? `等待 ${currentPlayer.name} 的回合` 
+        : "等待其他玩家...";
+    }
+    rollDiceBtn.disabled = !isMyTurn;
+  }
+  
+  // 清除当前骰子显示，准备下一回合
+  if (!data.canRollAgain) {
+    drawDice(0);
+  }
+  
+  drawBoard(gameState, 0, []);
+}
+
+function playAnimations(animationData, callback) {
+  if (!animationData || animationData.length === 0) {
+    if (callback) callback();
+    return;
+  }
+
+  const allAnims = animationData.map((anim) => {
+    const baseTimePerStep =
+      anim.type === "FLY"
+        ? 150
+        : anim.type === "JUMP"
+        ? 180
+        : anim.type === "KICKBACK"
+        ? 400
+        : 200;
+
+    const pathLength = anim.path ? anim.path.length : 2;
+    const totalDuration = baseTimePerStep * Math.max(pathLength - 1, 1);
+
+    return new Animation(
+      AnimationType[anim.type],
+      anim.pieceId,
+      anim.path || [anim.from, anim.to],
+      totalDuration
+    );
+  });
+
+  const moveAnims = allAnims.filter(anim => anim.type !== AnimationType.KICKBACK);
+  const kickbackAnims = allAnims.filter(anim => anim.type === AnimationType.KICKBACK);
+
+  const runKickback = () => {
+    if (kickbackAnims.length > 0) {
+      startAnimation(kickbackAnims, () => {
+        drawBoard(gameState, 0, []);
+        if (callback) callback();
+      });
+    } else {
+      drawBoard(gameState, 0, []);
+      if (callback) callback();
+    }
+  };
+
+  if (moveAnims.length > 0) {
+    startAnimation(moveAnims, runKickback);
+  } else {
+    runKickback();
+  }
+}
+
 async function init() {
   await loadPositions();
   await loadAssets();
-
-  playerCountSelect.dispatchEvent(new Event("change"));
 
   console.log("游戏初始化完成");
 }
