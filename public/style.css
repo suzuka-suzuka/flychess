@@ -60,6 +60,7 @@ h2 {
   display: flex;
   flex-direction: column;
   gap: 5px;
+  position: relative;
 }
 
 .player-input label {
@@ -74,12 +75,43 @@ h2 {
   border-radius: 6px;
   font-size: 15px;
   transition: border-color 0.3s;
+  flex: 1;
 }
 
 .player-input input:focus {
   outline: none;
   border-color: #4a90e2;
   box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.1);
+}
+
+.player-input>div {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.btn-small {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  background: #48bb78;
+  color: white;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn-small:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.btn-small:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .player-count {
@@ -321,10 +353,12 @@ h2 {
 }
 
 @keyframes pulse {
+
   0%,
   100% {
     transform: scale(1);
   }
+
   50% {
     transform: scale(1.1);
   }
@@ -409,10 +443,12 @@ h2 {
 }
 
 @keyframes glow {
+
   0%,
   100% {
     box-shadow: 0 0 15px 5px rgba(255, 255, 0, 0.8);
   }
+
   50% {
     box-shadow: 0 0 20px 8px rgba(255, 255, 0, 1);
   }
@@ -469,7 +505,109 @@ h2 {
   font-size: 1em;
 }
 
+/* ============ 联机房间样式 ============ */
+
+.room-setup {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+#waiting-room {
+  padding: 20px;
+  background: #f9f9f9;
+  border-radius: 8px;
+  border: 2px solid #ddd;
+}
+
+#waiting-room h3 {
+  color: #333;
+  margin-bottom: 15px;
+  text-align: center;
+}
+
+#room-players-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 15px;
+  min-height: 100px;
+}
+
+.room-player {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  background: white;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  font-size: 16px;
+}
+
+.player-color-dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid #333;
+  flex-shrink: 0;
+}
+
+.you-tag {
+  background: #4a90e2;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: bold;
+  margin-left: 5px;
+}
+
+.host-tag {
+  background: #ff9800;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: bold;
+  margin-left: 5px;
+}
+
+.ready-tag {
+  margin-left: auto;
+  background: #4caf50;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.not-ready-tag {
+  margin-left: auto;
+  background: #999;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.room-controls {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.hint {
+  text-align: center;
+  color: #666;
+  font-size: 14px;
+  margin: 10px 0;
+}
+
 @media (max-width: 1200px) {
+
   .left-controls,
   .right-controls {
     width: 180px;
