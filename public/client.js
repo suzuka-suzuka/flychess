@@ -632,11 +632,11 @@ function drawBoard(state, diceRoll = 0, highlightPieces = []) {
 
         if (shouldHighlight) {
           ctx.save();
-          ctx.shadowColor = "#000000";
+          ctx.shadowColor = "white";
           ctx.shadowBlur = 20;
           ctx.shadowOffsetX = 0;
           ctx.shadowOffsetY = 0;
-          ctx.strokeStyle = "#000000";
+          ctx.strokeStyle = "white";
           ctx.lineWidth = 4;
           ctx.beginPath();
           ctx.arc(x + 20, y + 20, 25, 0, Math.PI * 2);
