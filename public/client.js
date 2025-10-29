@@ -634,14 +634,12 @@ function drawBoard(state, diceRoll = 0, highlightPieces = []) {
 
         if (shouldHighlight) {
           ctx.save();
-          ctx.shadowColor = "white";
-          ctx.shadowBlur = 20;
-          ctx.shadowOffsetX = 0;
-          ctx.shadowOffsetY = 0;
-          ctx.strokeStyle = "white";
-          ctx.lineWidth = 4;
+          ctx.shadowColor = "black";
+          ctx.shadowBlur = 15;
+          ctx.strokeStyle = "black";
+          ctx.lineWidth = 3;
           ctx.beginPath();
-          ctx.arc(x + 20, y + 20, 25, 0, Math.PI * 2);
+          ctx.arc(x + 20, y + 20, 24, 0, Math.PI * 2);
           ctx.stroke();
           ctx.restore();
         }
