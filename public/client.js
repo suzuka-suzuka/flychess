@@ -616,7 +616,9 @@ function drawBoard(state, diceRoll = 0, highlightPieces = []) {
         const x = parseInt(firstPiece.position.left) + 5;
         const y = parseInt(firstPiece.position.top) + 5;
 
-        const currentSide = players.find((p) => p.id === state.currentPlayerId);
+        const currentSide = players.find(
+          (p) => p.color === state.currentPlayerColor
+        );
         const shouldHighlight =
           currentSide &&
           highlightPieces.some((index) => {
